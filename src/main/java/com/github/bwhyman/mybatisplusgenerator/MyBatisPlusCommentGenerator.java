@@ -9,6 +9,9 @@ import org.mybatis.generator.api.dom.xml.XmlElement;
 import java.util.Properties;
 import java.util.Set;
 
+/**
+ * @author BO
+ */
 public class MyBatisPlusCommentGenerator implements CommentGenerator {
     @Override
     public void addConfigurationProperties(Properties properties) {

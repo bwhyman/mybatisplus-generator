@@ -1,17 +1,29 @@
 package com.github.bwhyman.mybatisplusgenerator;
 
 import lombok.extern.slf4j.Slf4j;
-import org.mybatis.generator.api.*;
+import org.mybatis.generator.api.GeneratedXmlFile;
+import org.mybatis.generator.api.IntrospectedColumn;
+import org.mybatis.generator.api.IntrospectedTable;
+import org.mybatis.generator.api.PluginAdapter;
 import org.mybatis.generator.api.dom.java.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Properties;
 
+/**
+ * @author BO
+ */
 @Slf4j
 public class MyBatisPlusPluginAdapter extends PluginAdapter {
     private Path mapperTargetPackagePath;
+
+    private String version;
+    private boolean serializable = false;
+    private String never;
+    private boolean builder = false;
 
     @Override
     public boolean validate(List<String> list) {
@@ -23,7 +35,7 @@ public class MyBatisPlusPluginAdapter extends PluginAdapter {
         try {
             Path modelTargetPackagePath =
                     Path.of(baseD).resolve(Path.of(modelTargetProject)).resolve(Path.of(modelTargetPackage.replace(
-                    ".", "/")));
+                            ".", "/")));
             mapperTargetPackagePath =
                     Path.of(baseD).resolve(Path.of(mapperTargetProject)).resolve(Path.of(mapperTargetPackage.replace(
                             ".", "/")));
@@ -35,13 +47,36 @@ public class MyBatisPlusPluginAdapter extends PluginAdapter {
         }
         return true;
     }
+    @Override
+    public void setProperties(Properties properties) {
+        super.setProperties(properties);
+        never = properties.getProperty("never");
+        serializable = Boolean.parseBoolean(properties.getProperty("serializable"));
+        version = String.valueOf(properties.getProperty("version"));
+        builder = Boolean.parseBoolean(properties.getProperty("builder"));
+    }
 
     @Override
     public boolean modelBaseRecordClassGenerated(TopLevelClass topLevelClass, IntrospectedTable introspectedTable) {
-        topLevelClass.addImportedType("lombok.Data");
-        topLevelClass.addAnnotation("@Data");
-        topLevelClass.addImportedType("lombok.NoArgsConstructor");
+        topLevelClass.addImportedType("lombok.*");
+        topLevelClass.addAnnotation("@Setter");
+        topLevelClass.addAnnotation("@Getter");
+        topLevelClass.addAnnotation("@ToString");
         topLevelClass.addAnnotation("@NoArgsConstructor");
+        if (builder) {
+            topLevelClass.addAnnotation("@Builder");
+            topLevelClass.addAnnotation("@AllArgsConstructor");
+        }
+        if (serializable) {
+            topLevelClass.addImportedType("java.io.Serializable");
+            topLevelClass.addSuperInterface(new FullyQualifiedJavaType("Serializable"));
+            Field field = new Field("serialVersionUID", new FullyQualifiedJavaType("long"));
+            field.setFinal(true);
+            field.setStatic(true);
+            field.setVisibility(JavaVisibility.PRIVATE);
+            field.setInitializationString("1L");
+            topLevelClass.addField(field);
+        }
         topLevelClass.addImportedType("com.baomidou.mybatisplus.annotation.TableName");
         topLevelClass.addAnnotation("@TableName(\"" + introspectedTable.getAliasedFullyQualifiedTableNameAtRuntime() +
                 "\")");
@@ -72,14 +107,29 @@ public class MyBatisPlusPluginAdapter extends PluginAdapter {
         return true;
     }
 
+
     @Override
     public boolean modelFieldGenerated(Field field, TopLevelClass topLevelClass,
                                        IntrospectedColumn introspectedColumn, IntrospectedTable introspectedTable,
                                        ModelClassType modelClassType) {
-        String version = "version";
-        if (field.getName().toLowerCase().equals(version)) {
+
+        if (introspectedColumn.getActualColumnName().equals(version)) {
             topLevelClass.addImportedType("com.baomidou.mybatisplus.annotation.Version");
             field.addAnnotation("@Version");
+        }
+        if (never != null && never.length() > 0) {
+            String[] nevers = never.split(",");
+            boolean first = true;
+            for (String n : nevers) {
+                if(introspectedColumn.getActualColumnName().toLowerCase().equals(n.trim())) {
+                    if (first) {
+                        topLevelClass.addImportedType("com.baomidou.mybatisplus.annotation.FieldStrategy");
+                        topLevelClass.addImportedType("com.baomidou.mybatisplus.annotation.TableField");
+                        first = false;
+                    }
+                    field.addAnnotation("@TableField(updateStrategy = FieldStrategy.NEVER)");
+                }
+            }
         }
         return true;
     }
